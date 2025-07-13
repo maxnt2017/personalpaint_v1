@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Paint Редактор</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f0f0f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #toolbar {
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+      background: #fff;
+      border-bottom: 1px solid #ccc;
+      width: 100%;
+      justify-content: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      flex-wrap: wrap;
+    }
+
+    canvas {
+      border: 1px solid #ccc;
+      background: #fff;
+      cursor: crosshair;
+      margin-top: 10px;
+    }
+
+    .tool {
+      padding: 5px 10px;
+      border: 1px solid #aaa;
+      background: #eee;
+      cursor: pointer;
+    }
+
+    .tool.active {
+      background: #ccc;
+    }
+
+    input[type="color"],
+    input[type="range"] {
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="toolbar">
+    <button class="tool" id="brushBtn">Пензель</button>
+    <button class="tool" id="eraserBtn">Гумка</button>
+    <label>Колір:
+      <input type="color" id="colorPicker" value="#000000">
+    </label>
+    <label>Розмір:
+      <input type="range" id="brushSize" min="1" max="50" value="5">
+    </label>
+    <button class="tool" id="undoBtn">↶ Undo</button>
+    <button class="tool" id="redoBtn">↷ Redo</button>
+    <button class="tool" id="clearBtn">Очистити</button>
+    <button class="tool" id="saveBtn">Зберегти</button>
+  </div>
+
+  <canvas id="canvas" width="1000" height="600"></canvas>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let drawing = false;
+    let currentTool = 'brush';
+    let brushColor = document.getElementById('colorPicker').value;
+    let brushSize = document.getElementById('brushSize').value;
+
+    const undoStack = [];
+    const redoStack = [];
+
+    function saveState() {
+      if (undoStack.length >= 20) undoStack.shift(); // обмежити кількість історії
+      undoStack.push(canvas.toDataURL());
+      redoStack.length = 0; // очищаємо redo при новій дії
+    }
+
+    function restoreState(stackFrom, stackTo) {
+      if (stackFrom.length === 0) return;
+      stackTo.push(canvas.toDataURL());
+      const img = new Image();
+      img.src = stackFrom.pop();
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+      };
+    }
+
+    const startDraw = (e) => {
+      drawing = true;
+      ctx.beginPath();
+      ctx.moveTo(e.offsetX, e.offsetY);
+      saveState(); // Save before drawing
+    };
+
+    const draw = (e) => {
+      if (!drawing) return;
+      ctx.lineTo(e.offsetX, e.offsetY);
+      ctx.strokeStyle = currentTool === 'eraser' ? '#ffffff' : brushColor;
+      ctx.lineWidth = brushSize;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    };
+
+    const stopDraw = () => {
+      if (drawing) {
+        drawing = false;
+        ctx.closePath();
+      }
+    };
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDraw);
+    canvas.addEventListener('mouseleave', stopDraw);
+
+    // Buttons
+    document.getElementById('brushBtn').onclick = () => {
+      currentTool = 'brush';
+      setActiveTool('brushBtn');
+    };
+    document.getElementById('eraserBtn').onclick = () => {
+      currentTool = 'eraser';
+      setActiveTool('eraserBtn');
+    };
+
+    document.getElementById('colorPicker').oninput = (e) => {
+      brushColor = e.target.value;
+    };
+    document.getElementById('brushSize').oninput = (e) => {
+      brushSize = e.target.value;
+    };
+
+    document.getElementById('clearBtn').onclick = () => {
+      saveState();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    };
+
+    document.getElementById('saveBtn').onclick = () => {
+      const link = document.createElement('a');
+      link.download = 'malunok.png';
+      link.href = canvas.toDataURL();
+      link.click();
+    };
+
+    document.getElementById('undoBtn').onclick = () => {
+      restoreState(undoStack, redoStack);
+    };
+
+    document.getElementById('redoBtn').onclick = () => {
+      restoreState(redoStack, undoStack);
+    };
+
+    function setActiveTool(id) {
+      document.querySelectorAll('.tool').forEach(btn => btn.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    setActiveTool('brushBtn'); // default
+  </script>
+
+</body>
+</html>
