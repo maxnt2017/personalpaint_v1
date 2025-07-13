@@ -2,12 +2,12 @@
 <html lang="uk">
 <head>
   <meta charset="UTF-8">
-  <title>Paint Редактор</title>
+  <title>Розширений Paint</title>
   <style>
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
-      background: #f0f0f0;
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(to bottom right, #cce7ff, #e6ccff);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -15,160 +15,190 @@
 
     #toolbar {
       display: flex;
+      flex-wrap: wrap;
       gap: 10px;
       padding: 10px;
-      background: #fff;
+      background: #ffffffcc;
+      backdrop-filter: blur(10px);
       border-bottom: 1px solid #ccc;
       width: 100%;
       justify-content: center;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-      flex-wrap: wrap;
     }
 
     canvas {
-      border: 1px solid #ccc;
+      border: 2px solid #555;
       background: #fff;
-      cursor: crosshair;
       margin-top: 10px;
+      cursor: crosshair;
     }
 
     .tool {
       padding: 5px 10px;
-      border: 1px solid #aaa;
+      border: 1px solid #999;
       background: #eee;
       cursor: pointer;
+      border-radius: 5px;
     }
 
     .tool.active {
-      background: #ccc;
+      background: #bbb;
     }
 
-    input[type="color"],
-    input[type="range"] {
-      cursor: pointer;
+    select, input[type="color"], input[type="range"], input[type="text"] {
+      border-radius: 5px;
+      padding: 4px;
     }
+
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
   <div id="toolbar">
     <button class="tool" id="brushBtn">Пензель</button>
     <button class="tool" id="eraserBtn">Гумка</button>
-    <label>Колір:
-      <input type="color" id="colorPicker" value="#000000">
+    <button class="tool" id="textBtn">Текст</button>
+
+    <label>Колір: <input type="color" id="colorPicker" value="#000000"></label>
+    <label>Розмір: <input type="range" id="brushSize" min="1" max="50" value="5"></label>
+
+    <label>Шрифт:
+      <select id="fontSelector">
+        <option value="Arial">Arial</option>
+        <option value="Comic Sans MS">Comic Sans</option>
+        <option value="Courier New">Courier</option>
+        <option value="Georgia">Georgia</option>
+        <option value="Times New Roman">Times</option>
+      </select>
     </label>
-    <label>Розмір:
-      <input type="range" id="brushSize" min="1" max="50" value="5">
-    </label>
-    <button class="tool" id="undoBtn">↶ Undo</button>
-    <button class="tool" id="redoBtn">↷ Redo</button>
+
+    <input type="text" id="textInput" placeholder="Ваш текст..." />
+
+    <button class="tool" id="savePng">PNG</button>
+    <button class="tool" id="saveJpg">JPG</button>
+    <button class="tool" id="savePdf">PDF</button>
+    <button class="tool" id="printBtn">Друк</button>
+    <button class="tool" id="copyBtn">Копіювати</button>
+    <button class="tool" id="cropBtn">Обрізати</button>
     <button class="tool" id="clearBtn">Очистити</button>
-    <button class="tool" id="saveBtn">Зберегти</button>
   </div>
 
   <canvas id="canvas" width="1000" height="600"></canvas>
 
   <script>
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
 
     let drawing = false;
-    let currentTool = 'brush';
-    let brushColor = document.getElementById('colorPicker').value;
-    let brushSize = document.getElementById('brushSize').value;
+    let tool = 'brush';
+    let brushColor = document.getElementById("colorPicker").value;
+    let brushSize = document.getElementById("brushSize").value;
+    let font = document.getElementById("fontSelector").value;
+    let text = '';
+    let startX, startY;
 
-    const undoStack = [];
-    const redoStack = [];
-
-    function saveState() {
-      if (undoStack.length >= 20) undoStack.shift(); // обмежити кількість історії
-      undoStack.push(canvas.toDataURL());
-      redoStack.length = 0; // очищаємо redo при новій дії
-    }
-
-    function restoreState(stackFrom, stackTo) {
-      if (stackFrom.length === 0) return;
-      stackTo.push(canvas.toDataURL());
-      const img = new Image();
-      img.src = stackFrom.pop();
-      img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
-      };
-    }
-
-    const startDraw = (e) => {
-      drawing = true;
-      ctx.beginPath();
-      ctx.moveTo(e.offsetX, e.offsetY);
-      saveState(); // Save before drawing
-    };
-
-    const draw = (e) => {
-      if (!drawing) return;
-      ctx.lineTo(e.offsetX, e.offsetY);
-      ctx.strokeStyle = currentTool === 'eraser' ? '#ffffff' : brushColor;
-      ctx.lineWidth = brushSize;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-    };
-
-    const stopDraw = () => {
-      if (drawing) {
-        drawing = false;
-        ctx.closePath();
+    canvas.addEventListener("mousedown", (e) => {
+      if (tool === 'text') {
+        const input = document.getElementById("textInput").value;
+        ctx.font = `${brushSize * 2}px ${font}`;
+        ctx.fillStyle = brushColor;
+        ctx.fillText(input, e.offsetX, e.offsetY);
+      } else {
+        drawing = true;
+        startX = e.offsetX;
+        startY = e.offsetY;
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
       }
+    });
+
+    canvas.addEventListener("mousemove", (e) => {
+      if (!drawing || tool === 'text') return;
+      ctx.lineTo(e.offsetX, e.offsetY);
+      ctx.strokeStyle = tool === 'eraser' ? "#ffffff" : brushColor;
+      ctx.lineWidth = brushSize;
+      ctx.lineCap = "round";
+      ctx.stroke();
+    });
+
+    canvas.addEventListener("mouseup", () => {
+      drawing = false;
+      ctx.closePath();
+    });
+
+    // Інструменти
+    document.getElementById("brushBtn").onclick = () => setTool("brush");
+    document.getElementById("eraserBtn").onclick = () => setTool("eraser");
+    document.getElementById("textBtn").onclick = () => setTool("text");
+
+    function setTool(newTool) {
+      tool = newTool;
+      document.querySelectorAll(".tool").forEach(btn => btn.classList.remove("active"));
+      if (tool === 'brush') document.getElementById("brushBtn").classList.add("active");
+      if (tool === 'eraser') document.getElementById("eraserBtn").classList.add("active");
+      if (tool === 'text') document.getElementById("textBtn").classList.add("active");
+    }
+
+    // Зміни кольору, шрифту, розміру
+    document.getElementById("colorPicker").oninput = (e) => brushColor = e.target.value;
+    document.getElementById("brushSize").oninput = (e) => brushSize = e.target.value;
+    document.getElementById("fontSelector").onchange = (e) => font = e.target.value;
+
+    // Збереження
+    document.getElementById("savePng").onclick = () => saveAs("image/png");
+    document.getElementById("saveJpg").onclick = () => saveAs("image/jpeg");
+    document.getElementById("savePdf").onclick = () => {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF();
+      const imgData = canvas.toDataURL("image/png");
+      pdf.addImage(imgData, "PNG", 10, 10, 190, 100);
+      pdf.save("canvas.pdf");
     };
 
-    canvas.addEventListener('mousedown', startDraw);
-    canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('mouseup', stopDraw);
-    canvas.addEventListener('mouseleave', stopDraw);
+    function saveAs(type) {
+      const link = document.createElement("a");
+      link.download = `canvas.${type === 'image/png' ? 'png' : 'jpg'}`;
+      link.href = canvas.toDataURL(type);
+      link.click();
+    }
 
-    // Buttons
-    document.getElementById('brushBtn').onclick = () => {
-      currentTool = 'brush';
-      setActiveTool('brushBtn');
-    };
-    document.getElementById('eraserBtn').onclick = () => {
-      currentTool = 'eraser';
-      setActiveTool('eraserBtn');
+    // Друк
+    document.getElementById("printBtn").onclick = () => {
+      const win = window.open();
+      win.document.write(`<img src="${canvas.toDataURL("image/png")}" onload="window.print();window.close()" />`);
     };
 
-    document.getElementById('colorPicker').oninput = (e) => {
-      brushColor = e.target.value;
-    };
-    document.getElementById('brushSize').oninput = (e) => {
-      brushSize = e.target.value;
+    // Копіювання
+    document.getElementById("copyBtn").onclick = async () => {
+      canvas.toBlob(async (blob) => {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({ [blob.type]: blob })
+          ]);
+          alert("Зображення скопійовано в буфер!");
+        } catch (err) {
+          alert("Не вдалося скопіювати 😢");
+        }
+      });
     };
 
-    document.getElementById('clearBtn').onclick = () => {
-      saveState();
+    // Обрізання (Crop)
+    document.getElementById("cropBtn").onclick = () => {
+      const cropWidth = canvas.width / 2;
+      const cropHeight = canvas.height / 2;
+      const imageData = ctx.getImageData(100, 100, cropWidth, cropHeight);
+      canvas.width = cropWidth;
+      canvas.height = cropHeight;
+      ctx.putImageData(imageData, 0, 0);
+    };
+
+    // Очистити
+    document.getElementById("clearBtn").onclick = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     };
 
-    document.getElementById('saveBtn').onclick = () => {
-      const link = document.createElement('a');
-      link.download = 'malunok.png';
-      link.href = canvas.toDataURL();
-      link.click();
-    };
-
-    document.getElementById('undoBtn').onclick = () => {
-      restoreState(undoStack, redoStack);
-    };
-
-    document.getElementById('redoBtn').onclick = () => {
-      restoreState(redoStack, undoStack);
-    };
-
-    function setActiveTool(id) {
-      document.querySelectorAll('.tool').forEach(btn => btn.classList.remove('active'));
-      document.getElementById(id).classList.add('active');
-    }
-
-    setActiveTool('brushBtn'); // default
+    // Стартове виділення інструменту
+    setTool("brush");
   </script>
-
 </body>
 </html>
